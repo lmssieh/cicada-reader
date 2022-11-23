@@ -1,82 +1,89 @@
+import { Readability } from "@mozilla/readability";
+import { useDepromosify } from "../components/useDepromisify";
+import { getChapters, awaitForEle, getText } from "../utils";
+
 interface website {
   name: string; // location.host
-  prev: () => Link;
-  next: () => Link;
-  chapters: () => Promise<any>;
-  content: contentType;
+  run: () => {
+    title: string;
+    text: string;
+    prev: string;
+    next: string;
+    chapters: {
+      title: string,
+      url: string
+    };
+  }
 }
+
 interface websitesType {
   [url: string]: website
 }
+
 interface contentType {
   title: () => string;
   body: () => string;
 }
 
-interface Link {
-  name: string,
-  link: string
+interface Ichapters {
+  title: string,
+  url: string
 }
-
-// helper function
-const getLink = (name: string, selector: string) => {
-  const link = (document.querySelector(selector) as HTMLAnchorElement)?.href;
-  return {
-    name,
-    link: link,
-  }
-}
-
-function getChapters(HTML: HTMLCollection, extractor: any) {
-  const chaptersArr = [];
-  const titles = Array.from(HTML).forEach(ele => {
-    const chapterObj = extractor(ele)
-    chaptersArr.push(chapterObj)
-  });
-  return chaptersArr
-}
-
-export const awaitForEle = (selector: string) => {
-  return new Promise((res) => {
-    if (document.querySelector(selector)) {
-      console.log('yay')
-      res(selector);
-    }
-
-    const config = { attributes: true, childList: true, subtree: true };
-
-    const observer = new MutationObserver(mutations => {
-      if (document.querySelector(selector)) {
-        console.log('found it')
-        res(document.querySelector(selector));
-        observer.disconnect();
-      }
-    });
-
-    observer.observe(document.body, config)
-  })
-}
-
 
 export const websites: websitesType = {
   'novelfull.com': {
     name: 'box novel',
-    prev: () => getLink('prev', '#prev_chap'),
-    next: () => getLink('next', '#next_chap'),
-    chapters: async () => {
-      (document.querySelector('button.chapter_jump') as HTMLButtonElement)?.click();
-      await awaitForEle("#chapter-nav-top select");
-      const chaptersEle = document.querySelector("#chapter-nav-top select")?.children;
-      return getChapters(chaptersEle, (ele: HTMLElement) => {
-        return {
+    run(d = document) {
+      async function customGetChapters() {
+        (d.querySelector('button.chapter_jump') as HTMLButtonElement)?.click();
+        await awaitForEle("#chapter-nav-top select");
+        const chaptersEle = d.querySelector("#chapter-nav-top select")?.children;
+        const extractor = (ele: HTMLElement) => ({
           title: ele.textContent,
           url: (ele as HTMLSelectElement).value
-        }
-      })
-    },
-    content: {
-      title: () => document.querySelector("#chapter-content strong")?.textContent,
-      body: () => document.querySelector("#chapter-content")?.textContent,
+        })
+        return getChapters(chaptersEle, extractor)
+      }
+
+      return {
+        title: d.querySelector(".chapter-title")?.title,
+        text: getText('#chapter-content', d),
+        prev: d.querySelector('#prev_chap')?.href,
+        next: d.querySelector('#next_chap')?.href,
+        chapters: useDepromosify(customGetChapters())
+      }
     }
   },
+  'secondlifetranslations.com': {
+    name: 'second life translations',
+    run() {
+      const chapters: Ichapters[] = [];
+      const chaptersEle = document.querySelector("#mesrz > div.srzselectp > select").children;
+      [...chaptersEle].forEach(ele => {
+        chapters.push({
+          title: ele.textContent,
+          url: ele.value
+        })
+      })
+      return {
+        title: document.querySelector("article > a")?.textContent,
+        text: getText('.entry-content.clr'),
+        prev: document.querySelector('.srznavliprev a')?.href,
+        next: document.querySelector('.srznavlinext a')?.href,
+        chapters: chapters
+      }
+    }
+  },
+  'novelhall.com': {
+    name: 'novel hall',
+    run(d = document) {
+      return {
+        title: d.querySelector('.single-header h1')?.textContent,
+        text: getText('#htmlContent'),
+        prev: d.querySelector('.nav-single a:first-child'),
+        next: d.querySelector('.nav-single a:last-child'),
+        chapters: []
+      }
+    }
+  }
 }
